@@ -1,4 +1,4 @@
-"""Cache the focal agent's history features, future, type, lane tokens and neighbour tokens for each split as arrays"""
+"""Cache the focal agent's history features, future, type, lane tokens with their graph, and neighbour tokens for each split as arrays"""
 
 from multiprocessing import Pool
 
@@ -9,15 +9,16 @@ from av2_data import DATA_ROOT, lane_tokens, list_scenarios, load_scene, neighbo
 
 def load(scenario_dir):
     scene = load_scene(scenario_dir)
-    lanes, lane_mask = lane_tokens(scene["lanes"])
+    lanes, lane_mask, lane_edges = lane_tokens(scene["lanes"], scene["lane_ids"], scene["lane_links"])
     neighbors, neighbor_mask, neighbor_type = neighbor_tokens(scene["neighbors"], scene["neighbor_types"])
-    return scene["feat"].astype(np.float32), scene["fut"].astype(np.float32), scene["type"], lanes, lane_mask, neighbors, neighbor_mask, neighbor_type
+    # adjacency packed to bits, 8 KB per scene instead of 64 KB
+    return scene["feat"].astype(np.float32), scene["fut"].astype(np.float32), scene["type"], lanes, lane_mask, np.packbits(lane_edges, axis=-1), neighbors, neighbor_mask, neighbor_type
 
 
 if __name__ == "__main__":
     for split in ["train", "val"]:
         with Pool() as pool:
             arrays = map(np.array, zip(*pool.map(load, list_scenarios(split), chunksize=64)))
-        names = ["feat", "fut", "type", "lanes", "lane_mask", "neighbors", "neighbor_mask", "neighbor_type"]
+        names = ["feat", "fut", "type", "lanes", "lane_mask", "lane_edges", "neighbors", "neighbor_mask", "neighbor_type"]
         np.savez(DATA_ROOT / f"{split}.npz", **dict(zip(names, arrays)))
         print(split, "saved", names)

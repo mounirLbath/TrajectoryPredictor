@@ -9,9 +9,9 @@ from train import load
 
 
 @torch.no_grad()
-def sample(model, feat, type_id, lanes, lane_mask, neighbors, neighbor_mask, neighbor_type, k=6, steps=50):
-    scene = [a.repeat_interleave(k, dim=0) for a in (feat, type_id, lanes, lane_mask, neighbors, neighbor_mask, neighbor_type)]
-    x = torch.randn(len(feat) * k, N_FUT, 2, device=feat.device)
+def sample(model, *scene, k=6, steps=50):
+    scene = [a.repeat_interleave(k, dim=0) for a in scene]
+    x = torch.randn(len(scene[0]), N_FUT, 2, device=scene[0].device)
     for i in range(steps):
         t = torch.full((len(x),), i / steps, device=x.device)
         # each step moves 1/(steps left) of the way toward the predicted clean path

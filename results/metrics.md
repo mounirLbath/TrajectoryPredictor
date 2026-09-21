@@ -9,10 +9,11 @@ Validation scores per stage, on the 2,000 val scenarios, in meters. minADE / min
 | 3 lane attention, 10,000 train scenarios | 94cbfcb | 3.49 / 8.81 / 0.85 | 1.72 / 3.87 / 0.57 |
 | 4 more data, weight averaging, GPU | 94cbfcb | 3.40 / 8.69 / 0.84 | 1.51 / 3.30 / 0.52 |
 | 5 neighbour attention | 88562b4 | 3.15 / 8.00 / 0.85 | 1.49 / 3.30 / 0.52 |
+| 6 lane GNN, 2 rounds of message passing | see git log | 2.97 / 7.49 / 0.83 | 1.91 / 4.46 / 0.54 |
 
 Notes on the images:
 - Stage 1 shows six random val scenes, mostly straight vehicles, with jagged samples.
-- Stages 2 to 5 show scenes chosen by how far the true path curves sideways, not by model score.
+- Stages 2 to 6 show scenes chosen by how far the true path curves sideways, not by model score.
 - The checkerboard warm-up images were not saved.
 
 To archive a new stage, run `python evaluate.py <name>` and it also writes `results/predictions_<name>.png`.
@@ -36,3 +37,15 @@ Stage 5 reliance test, 6 samples, all scenes, minADE / minFDE:
 | neighbours hidden | 1.70 / 3.88 |
 
 One run per stage with one seed. The stage 5 weights are kept locally in `results/focal_model_5_neighbors.pt`, which git ignores.
+
+Stage 6 overfits: train loss 0.003 against val 0.015, where stage 5 had 0.007 against 0.009. The single sample improved but the six samples collapsed onto nearly the same path, so best-of-6 got worse. Removing the edges at test time raises minADE from 1.91 to 3.63, so the graph is used, it just memorises.
+
+Stage 6 by curve type, 6 samples, minADE / minFDE, stage 5 in brackets:
+
+| Path type | Stage 6 | Stage 5 |
+|---|---|---|
+| straight | 1.59 / 3.62 | 1.22 / 2.58 |
+| gentle | 2.05 / 4.76 | 1.72 / 3.98 |
+| sharp | 3.17 / 7.85 | 2.42 / 5.68 |
+
+Weights: `results/focal_model_5_neighbors.pt` loads into `FlowModel(gnn_layers=0)`, `results/focal_model_6_lane_gnn.pt` into the default model. Both are gitignored.

@@ -46,21 +46,31 @@ def load_scene(scenario_dir, max_neighbors=32, radius=100.0):
         neighbors[i, tr.timestep] = to_frame(tr[["position_x", "position_y"]].to_numpy(), origin, theta)
         neighbor_types.append(TYPES.index(tr.object_type.iloc[0]))
 
-    lanes = [np.array([[p["x"], p["y"]] for p in seg["centerline"]]) for seg in lane_map["lane_segments"].values()]
-    lanes = [to_frame(l, origin, theta) for l in lanes if np.linalg.norm(l - origin, axis=1).min() < radius]
+    segments = lane_map["lane_segments"].values()
+    lanes = {seg["id"]: to_frame(np.array([[p["x"], p["y"]] for p in seg["centerline"]]), origin, theta) for seg in segments}
+    lanes = {i: l for i, l in lanes.items() if np.linalg.norm(l, axis=1).min() < radius}
+    links = {seg["id"]: [seg["successors"], seg["predecessors"], [seg["left_neighbor_id"]], [seg["right_neighbor_id"]]] for seg in segments if seg["id"] in lanes}
 
-    return dict(id=sid, feat=feat, type=TYPES.index(focal.object_type.iloc[0]), hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, neighbor_types=neighbor_types, lanes=lanes)
+    return dict(id=sid, feat=feat, type=TYPES.index(focal.object_type.iloc[0]), hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, neighbor_types=neighbor_types, lanes=list(lanes.values()), lane_ids=list(lanes), lane_links=links)
 
 
-def lane_tokens(lanes):
+def lane_tokens(lanes, ids, links):
+    order = np.argsort([np.linalg.norm(l, axis=1).min() for l in lanes])[:N_LANES]
+    slot = {ids[j]: i for i, j in enumerate(order)}
     tokens = np.zeros((N_LANES, N_LANE_POINTS, 4), dtype=np.float32)
-    for i, j in enumerate(np.argsort([np.linalg.norm(l, axis=1).min() for l in lanes])[:N_LANES]):
+    # one adjacency per edge type: successor, predecessor, left neighbour, right neighbour
+    edges = np.zeros((4, N_LANES, N_LANES), dtype=bool)
+    for i, j in enumerate(order):
         length = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(lanes[j], axis=0), axis=1))])
         along = np.linspace(0, length[-1], N_LANE_POINTS)
         points = np.column_stack([np.interp(along, length, lanes[j][:, k]) for k in range(2)])
         direction = np.gradient(points, axis=0)
         tokens[i] = np.column_stack([points, direction / np.linalg.norm(direction, axis=1, keepdims=True).clip(1e-6)])
-    return tokens, np.arange(N_LANES) < len(lanes)
+        for kind, targets in enumerate(links[ids[j]]):
+            for target in targets:
+                if target in slot:
+                    edges[kind, i, slot[target]] = True
+    return tokens, np.arange(N_LANES) < len(lanes), edges
 
 
 def neighbor_tokens(neighbors, types):
