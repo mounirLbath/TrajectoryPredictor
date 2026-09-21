@@ -8,7 +8,7 @@ Validation scores per stage, on the 2,000 val scenarios, in meters. minADE / min
 | 2 acceleration and integration | acc70eb | 4.43 / 11.65 / 0.90 | 2.17 / 5.21 / 0.66 |
 | 3 lane attention, 10,000 train scenarios | 94cbfcb | 3.49 / 8.81 / 0.85 | 1.72 / 3.87 / 0.57 |
 | 4 more data, weight averaging, GPU | 94cbfcb | 3.40 / 8.69 / 0.84 | 1.51 / 3.30 / 0.52 |
-| 5 neighbour attention | see git log | 3.15 / 8.00 / 0.85 | 1.49 / 3.30 / 0.52 |
+| 5 neighbour attention | 88562b4 | 3.15 / 8.00 / 0.85 | 1.49 / 3.30 / 0.52 |
 
 Notes on the images:
 - Stage 1 shows six random val scenes, mostly straight vehicles, with jagged samples.
