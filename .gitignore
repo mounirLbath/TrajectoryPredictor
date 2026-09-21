@@ -5,3 +5,5 @@ __pycache__/
 *.gif
 .DS_Store
 DECISIONS.md
+CLAUDE.md
+.claude/
