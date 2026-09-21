@@ -8,6 +8,7 @@ import pandas as pd
 
 DATA_ROOT = Path(__file__).parent / "data" / "av2"
 N_HIST, N_FUT = 50, 60
+TYPES = ["vehicle", "pedestrian", "motorcyclist", "cyclist", "bus", "static", "background", "construction", "riderless_bicycle", "unknown"]
 
 
 def to_frame(xy, origin, theta):
@@ -21,9 +22,13 @@ def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
     lane_map = json.load(open(scenario_dir / f"log_map_archive_{sid}.json"))
 
     focal = df[df.track_id == df.focal_track_id.iloc[0]].sort_values("timestep")
+    assert len(focal) == N_HIST + N_FUT
     xy = focal[["position_x", "position_y"]].to_numpy()
     origin, theta = xy[N_HIST - 1], focal.heading.iloc[N_HIST - 1]
     xy = to_frame(xy, origin, theta)
+    velocity = to_frame(focal[["velocity_x", "velocity_y"]].to_numpy(), 0, theta)
+    heading = focal.heading.to_numpy() - theta
+    feat = np.column_stack([xy, velocity, np.cos(heading), np.sin(heading)])[:N_HIST]
 
     others = df[(df.track_id != focal.track_id.iloc[0]) & (df.timestep < N_HIST)]
     last = others[others.timestep == N_HIST - 1]
@@ -37,7 +42,7 @@ def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
     lanes = [np.array([[p["x"], p["y"]] for p in seg["centerline"]]) for seg in lane_map["lane_segments"].values()]
     lanes = [to_frame(l, origin, theta) for l in lanes if np.linalg.norm(l - origin, axis=1).min() < radius]
 
-    return dict(id=sid, hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, lanes=lanes)
+    return dict(id=sid, feat=feat, type=TYPES.index(focal.object_type.iloc[0]), hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, lanes=lanes)
 
 
 SUBSET = {"train": 10_000, "val": 2_000}
