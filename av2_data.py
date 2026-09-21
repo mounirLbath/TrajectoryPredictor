@@ -40,8 +40,11 @@ def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
     return dict(id=sid, hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, lanes=lanes)
 
 
+SUBSET = {"train": 10_000, "val": 2_000}
+
+
 def list_scenarios(split="val"):
-    return sorted(p for p in (DATA_ROOT / split).iterdir() if p.is_dir())
+    return sorted(p for p in (DATA_ROOT / split).iterdir() if p.is_dir())[: SUBSET[split]]
 
 
 def plot_scene(scene, ax, preds=None):

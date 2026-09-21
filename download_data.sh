@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Downloads Argoverse 2 Motion Forecasting (CC BY-NC-SA 4.0) from its public S3 bucket.
-# Usage: ./download_data.sh [val|train|test ...]     default: val train
+# Downloads a subset of Argoverse 2 Motion Forecasting (CC BY-NC-SA 4.0): the first N scenarios per split.
+# Usage: ./download_data.sh [split:count ...]     default: train:10000 val:2000
 set -euo pipefail
 
 BUCKET=s3://argoverse/datasets/av2/motion-forecasting
@@ -8,9 +8,14 @@ DEST=$(dirname "$0")/data/av2
 
 command -v s5cmd >/dev/null || { echo "s5cmd not found: brew install s5cmd"; exit 1; }
 
-for split in "${@:-val train}"; do
-    mkdir -p "$DEST/$split"
-    echo "downloading $split ..."
-    s5cmd --no-sign-request --numworkers 32 sync "$BUCKET/$split/*" "$DEST/$split/"
-    echo "$split: $(find "$DEST/$split" -mindepth 1 -maxdepth 1 -type d | wc -l) scenarios"
+specs=("$@")
+[ ${#specs[@]} -gt 0 ] || specs=(train:10000 val:2000)
+
+for spec in "${specs[@]}"; do
+    split=${spec%%:*}
+    count=${spec##*:}
+    s5cmd --no-sign-request ls "$BUCKET/$split/" \
+        | awk -v n="$count" -v b="$BUCKET/$split" -v d="$DEST/$split" '/DIR/ && ++i <= n {print "sync", b "/" $NF "*", d "/" $NF}' \
+        | s5cmd --no-sign-request run
+    echo "$split: $count scenarios"
 done
