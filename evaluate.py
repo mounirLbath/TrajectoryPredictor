@@ -1,11 +1,9 @@
 import numpy as np
 import torch
 
-from av2_data import DATA_ROOT, N_FUT, list_scenarios, load_scene, plot_scene
+from av2_data import DATA_ROOT, DT, N_FUT, TYPES, list_scenarios, load_scene, plot_scene
 from model import SCALE, FlowModel
 from train import load
-
-DT = 0.1
 
 
 @torch.no_grad()
@@ -14,7 +12,8 @@ def sample(model, feat, type_id, k=6, steps=50):
     x = torch.randn(len(feat), N_FUT, 2)
     for i in range(steps):
         t = torch.full((len(x),), i / steps)
-        x = x + model(x, t, feat, type_id) / steps
+        # each step moves 1/(steps left) of the way toward the predicted clean path
+        x = x + (model(x, t, feat, type_id) - x) / (steps - i)
     return (x * SCALE).view(-1, k, N_FUT, 2).numpy()
 
 
@@ -53,8 +52,21 @@ if __name__ == "__main__":
         print(f"{name:26s}{ade:8.2f}{fde:8.2f}{miss:8.2f}")
 
     dirs = list_scenarios("val")
+    sideways = np.abs(raw["fut"][:, -1, 1])
+
+    def pick(kind, quantile):
+        idx = np.flatnonzero(raw["type"] == TYPES.index(kind))
+        return idx[np.argsort(sideways[idx])[int(quantile * (len(idx) - 1))]]
+
+    picks = [pick("vehicle", q) for q in (0.99, 0.95, 0.90)] + [pick(kind, 0.9) for kind in ("pedestrian", "cyclist", "motorcyclist")]
     fig, axes = plt.subplots(2, 3, figsize=(15, 9))
-    for ax, i in zip(axes.ravel(), np.random.default_rng(0).choice(len(dirs), 6, replace=False)):
-        plot_scene(load_scene(dirs[i]), ax, samples[i])
+    for ax, i in zip(axes.ravel(), picks):
+        scene = load_scene(dirs[i])
+        plot_scene(scene, ax, samples[i])
+        reach = 1.4 * max(np.abs(scene["fut"]).max(), 10)
+        ax.set_xlim(-0.3 * reach, reach)
+        ax.set_ylim(-0.65 * reach, 0.65 * reach)
+    axes[0, 0].legend(loc="upper left")
+    fig.suptitle("chosen by how far the true path curves sideways, not by model score")
     fig.tight_layout()
     fig.savefig("predictions.png", dpi=110)

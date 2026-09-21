@@ -8,6 +8,7 @@ import pandas as pd
 
 DATA_ROOT = Path(__file__).parent / "data" / "av2"
 N_HIST, N_FUT = 50, 60 # number of historical timesteps/future timesteps that we are predicting
+DT = 0.1
 TYPES = ["vehicle", "pedestrian", "motorcyclist", "cyclist", "bus", "static", "background", "construction", "riderless_bicycle", "unknown"]
 
 
@@ -59,8 +60,8 @@ def plot_scene(scene, ax, preds=None):
         ax.plot(*lane.T, color="0.8", lw=1)
     for nb in scene["neighbors"]:
         ax.plot(*nb.T, color="tab:blue", lw=1, alpha=0.6)
-    for p in ([] if preds is None else preds):
-        ax.plot(*p.T, color="tab:orange", lw=1.2, alpha=0.7)
+    for i, p in enumerate([] if preds is None else preds):
+        ax.plot(*p.T, color="tab:orange", lw=1.2, alpha=0.7, label="samples" if i == 0 else None)
     ax.plot(*scene["hist"].T, color="k", lw=2, label="history")
     ax.plot(*scene["fut"].T, color="tab:green", lw=2, label="future")
     ax.annotate(TYPES[scene["type"]], (0, 0), xytext=(6, 8), textcoords="offset points", weight="bold")

@@ -15,7 +15,7 @@ def flow_loss(model, feat, fut, type_id, generator=None):
     x0 = torch.randn(fut.shape, generator=generator)
     t = torch.rand(len(fut), generator=generator)
     xt = (1 - t[:, None, None]) * x0 + t[:, None, None] * fut
-    return ((model(xt, t, feat, type_id) - (fut - x0)) ** 2).mean()
+    return ((model(xt, t, feat, type_id) - fut) ** 2).mean()
 
 
 if __name__ == "__main__":
