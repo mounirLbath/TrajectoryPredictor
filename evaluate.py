@@ -1,20 +1,27 @@
+import sys
+
 import numpy as np
 import torch
 
 from av2_data import DATA_ROOT, DT, N_FUT, TYPES, list_scenarios, load_scene, plot_scene
-from model import SCALE, FlowModel
+from model import DEVICE, SCALE, FlowModel
 from train import load
 
 
 @torch.no_grad()
-def sample(model, feat, type_id, k=6, steps=50):
-    feat, type_id = feat.repeat_interleave(k, dim=0), type_id.repeat_interleave(k)
-    x = torch.randn(len(feat), N_FUT, 2)
+def sample(model, feat, type_id, lanes, lane_mask, k=6, steps=50):
+    feat, type_id, lanes, lane_mask = (a.repeat_interleave(k, dim=0) for a in (feat, type_id, lanes, lane_mask))
+    x = torch.randn(len(feat), N_FUT, 2, device=feat.device)
     for i in range(steps):
-        t = torch.full((len(x),), i / steps)
+        t = torch.full((len(x),), i / steps, device=x.device)
         # each step moves 1/(steps left) of the way toward the predicted clean path
-        x = x + (model(x, t, feat, type_id) - x) / (steps - i)
-    return (x * SCALE).view(-1, k, N_FUT, 2).numpy()
+        x = x + (model(x, t, feat, type_id, lanes, lane_mask) - x) / (steps - i)
+    return (x * SCALE).view(-1, k, N_FUT, 2).cpu().numpy()
+
+
+def sample_all(model, data, chunk=250):
+    feat, _, type_id, lanes, lane_mask = data
+    return np.concatenate([sample(model, *(a[i : i + chunk].to(DEVICE) for a in (feat, type_id, lanes, lane_mask))) for i in range(0, len(feat), chunk)])
 
 
 def metrics(pred, fut):
@@ -35,13 +42,12 @@ if __name__ == "__main__":
 
     torch.manual_seed(0)
     raw = np.load(DATA_ROOT / "val.npz")
-    feat, _, type_id = load("val")
-    model = FlowModel()
+    model = FlowModel().to(DEVICE)
     model.load_state_dict(torch.load("focal_model.pt"))
 
-    samples = np.concatenate([sample(model, feat[i : i + 500], type_id[i : i + 500]) for i in range(0, len(feat), 500)])
+    samples = sample_all(model, load("val"))
     results = {
-        "stay still": np.zeros((len(feat), 1, N_FUT, 2)),
+        "stay still": np.zeros((len(samples), 1, N_FUT, 2)),
         "constant velocity": constant_velocity(raw["feat"]),
         "flow matching, 1 sample": samples[:, :1],
         "flow matching, 6 samples": samples,
@@ -70,3 +76,5 @@ if __name__ == "__main__":
     fig.suptitle("chosen by how far the true path curves sideways, not by model score")
     fig.tight_layout()
     fig.savefig("predictions.png", dpi=110)
+    if len(sys.argv) > 1:
+        fig.savefig(f"results/predictions_{sys.argv[1]}.png", dpi=110)

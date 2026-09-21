@@ -9,6 +9,8 @@ import pandas as pd
 DATA_ROOT = Path(__file__).parent / "data" / "av2"
 N_HIST, N_FUT = 50, 60 # number of historical timesteps/future timesteps that we are predicting
 DT = 0.1
+N_LANES, N_LANE_POINTS = 128, 10
+N_NEIGHBORS, N_NEIGHBOR_STEPS = 32, 20
 TYPES = ["vehicle", "pedestrian", "motorcyclist", "cyclist", "bus", "static", "background", "construction", "riderless_bicycle", "unknown"]
 
 
@@ -17,7 +19,7 @@ def to_frame(xy, origin, theta):
     return (xy - origin) @ np.array([[c, -s], [s, c]])
 
 
-def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
+def load_scene(scenario_dir, max_neighbors=32, radius=100.0):
     sid = scenario_dir.name
     df = pd.read_parquet(scenario_dir / f"scenario_{sid}.parquet")
     lane_map = json.load(open(scenario_dir / f"log_map_archive_{sid}.json"))
@@ -38,17 +40,38 @@ def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
     keep = last.track_id.to_numpy()[np.argsort(dist)[:max_neighbors]]
     # NaN where a neighbour was not observed, zeros would look like a car at the origin
     neighbors = np.full((len(keep), N_HIST, 2), np.nan)
+    neighbor_types = []
     for i, tid in enumerate(keep):
         tr = others[others.track_id == tid]
         neighbors[i, tr.timestep] = to_frame(tr[["position_x", "position_y"]].to_numpy(), origin, theta)
+        neighbor_types.append(TYPES.index(tr.object_type.iloc[0]))
 
     lanes = [np.array([[p["x"], p["y"]] for p in seg["centerline"]]) for seg in lane_map["lane_segments"].values()]
     lanes = [to_frame(l, origin, theta) for l in lanes if np.linalg.norm(l - origin, axis=1).min() < radius]
 
-    return dict(id=sid, feat=feat, type=TYPES.index(focal.object_type.iloc[0]), hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, lanes=lanes)
+    return dict(id=sid, feat=feat, type=TYPES.index(focal.object_type.iloc[0]), hist=xy[:N_HIST], fut=xy[N_HIST:], neighbors=neighbors, neighbor_types=neighbor_types, lanes=lanes)
 
 
-SUBSET = {"train": 10_000, "val": 2_000}
+def lane_tokens(lanes):
+    tokens = np.zeros((N_LANES, N_LANE_POINTS, 4), dtype=np.float32)
+    for i, j in enumerate(np.argsort([np.linalg.norm(l, axis=1).min() for l in lanes])[:N_LANES]):
+        length = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(lanes[j], axis=0), axis=1))])
+        along = np.linspace(0, length[-1], N_LANE_POINTS)
+        points = np.column_stack([np.interp(along, length, lanes[j][:, k]) for k in range(2)])
+        direction = np.gradient(points, axis=0)
+        tokens[i] = np.column_stack([points, direction / np.linalg.norm(direction, axis=1, keepdims=True).clip(1e-6)])
+    return tokens, np.arange(N_LANES) < len(lanes)
+
+
+def neighbor_tokens(neighbors, types):
+    recent = neighbors[:, -N_NEIGHBOR_STEPS:]
+    tokens = np.zeros((N_NEIGHBORS, N_NEIGHBOR_STEPS, 3), dtype=np.float32)
+    tokens[: len(recent), :, :2] = np.nan_to_num(recent)
+    tokens[: len(recent), :, 2] = ~np.isnan(recent[..., 0])
+    return tokens, np.arange(N_NEIGHBORS) < len(recent), np.pad(np.array(types, dtype=int), (0, N_NEIGHBORS - len(types)))
+
+
+SUBSET = {"train": 30_000, "val": 2_000}
 
 
 def list_scenarios(split="val"):
