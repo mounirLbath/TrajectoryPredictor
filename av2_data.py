@@ -1,4 +1,4 @@
-"""Argoverse 2 loader. Scenes are expressed in the focal agent's frame at the last observed step."""
+"""Argoverse 2 loader, scenes are expressed in the focal agent's frame at the last observed step"""
 
 import json
 from pathlib import Path
@@ -24,6 +24,7 @@ def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
     focal = df[df.track_id == df.focal_track_id.iloc[0]].sort_values("timestep")
     assert len(focal) == N_HIST + N_FUT
     xy = focal[["position_x", "position_y"]].to_numpy()
+    # "now" is the last observed step, everything is expressed relative to it
     origin, theta = xy[N_HIST - 1], focal.heading.iloc[N_HIST - 1]
     xy = to_frame(xy, origin, theta)
     velocity = to_frame(focal[["velocity_x", "velocity_y"]].to_numpy(), 0, theta)
@@ -34,6 +35,7 @@ def load_scene(scenario_dir, max_neighbors=32, radius=60.0):
     last = others[others.timestep == N_HIST - 1]
     dist = np.linalg.norm(last[["position_x", "position_y"]].to_numpy() - origin, axis=1)
     keep = last.track_id.to_numpy()[np.argsort(dist)[:max_neighbors]]
+    # NaN where a neighbour was not observed, zeros would look like a car at the origin
     neighbors = np.full((len(keep), N_HIST, 2), np.nan)
     for i, tid in enumerate(keep):
         tr = others[others.track_id == tid]

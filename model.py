@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from av2_data import N_FUT, TYPES
 
-SCALE = 20.0
+SCALE = 20.0 # meters, brings the future to a spread of about 1
 N_FEAT = 6
 
 
