@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 DATA_ROOT = Path(__file__).parent / "data" / "av2"
-N_HIST, N_FUT = 50, 60
+N_HIST, N_FUT = 50, 60 # number of historical timesteps/future timesteps that we are predicting
 TYPES = ["vehicle", "pedestrian", "motorcyclist", "cyclist", "bus", "static", "background", "construction", "riderless_bicycle", "unknown"]
 
 
@@ -61,6 +61,7 @@ def plot_scene(scene, ax, preds=None):
         ax.plot(*p.T, color="tab:orange", lw=1.2, alpha=0.7)
     ax.plot(*scene["hist"].T, color="k", lw=2, label="history")
     ax.plot(*scene["fut"].T, color="tab:green", lw=2, label="future")
+    ax.annotate(TYPES[scene["type"]], (0, 0), xytext=(6, 8), textcoords="offset points", weight="bold")
     ax.set_aspect("equal")
     ax.set_xlim(-40, 80)
     ax.set_ylim(-60, 60)
@@ -73,10 +74,17 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     dirs = list_scenarios("val")
-    picks = np.random.default_rng(0).choice(len(dirs), 6, replace=False)
+    scenes = {}
+    for d in dirs:
+        scene = load_scene(d)
+        scenes.setdefault(scene["type"], scene)
+        if len(scenes) == 6:
+            break
     fig, axes = plt.subplots(2, 3, figsize=(15, 9))
-    for ax, i in zip(axes.ravel(), picks):
-        plot_scene(load_scene(dirs[i]), ax)
+    for ax, scene in zip(axes.ravel(), scenes.values()):
+        plot_scene(scene, ax)
+    for ax in axes.ravel()[len(scenes):]:
+        ax.axis("off")
     axes[0, 0].legend(loc="upper left")
     fig.tight_layout()
     fig.savefig("scenes.png", dpi=110)
