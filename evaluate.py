@@ -9,19 +9,19 @@ from train import load
 
 
 @torch.no_grad()
-def sample(model, feat, type_id, lanes, lane_mask, k=6, steps=50):
-    feat, type_id, lanes, lane_mask = (a.repeat_interleave(k, dim=0) for a in (feat, type_id, lanes, lane_mask))
-    x = torch.randn(len(feat), N_FUT, 2, device=feat.device)
+def sample(model, feat, type_id, lanes, lane_mask, neighbors, neighbor_mask, neighbor_type, k=6, steps=50):
+    scene = [a.repeat_interleave(k, dim=0) for a in (feat, type_id, lanes, lane_mask, neighbors, neighbor_mask, neighbor_type)]
+    x = torch.randn(len(feat) * k, N_FUT, 2, device=feat.device)
     for i in range(steps):
         t = torch.full((len(x),), i / steps, device=x.device)
         # each step moves 1/(steps left) of the way toward the predicted clean path
-        x = x + (model(x, t, feat, type_id, lanes, lane_mask) - x) / (steps - i)
+        x = x + (model(x, t, *scene) - x) / (steps - i)
     return (x * SCALE).view(-1, k, N_FUT, 2).cpu().numpy()
 
 
 def sample_all(model, data, chunk=250):
-    feat, _, type_id, lanes, lane_mask = data
-    return np.concatenate([sample(model, *(a[i : i + chunk].to(DEVICE) for a in (feat, type_id, lanes, lane_mask))) for i in range(0, len(feat), chunk)])
+    scene = data[:1] + data[2:]
+    return np.concatenate([sample(model, *(a[i : i + chunk].to(DEVICE) for a in scene)) for i in range(0, len(scene[0]), chunk)])
 
 
 def metrics(pred, fut):

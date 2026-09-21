@@ -8,16 +8,17 @@ from model import DEVICE, SCALE, FlowModel, normalise
 def load(split):
     data = np.load(DATA_ROOT / f"{split}.npz")
     feat, fut = normalise(torch.tensor(data["feat"]), torch.tensor(data["fut"]))
-    lanes = torch.tensor(data["lanes"])
+    lanes, neighbors = torch.tensor(data["lanes"]), torch.tensor(data["neighbors"])
     lanes[..., :2] /= SCALE
-    return feat, fut, torch.tensor(data["type"]), lanes, torch.tensor(data["lane_mask"])
+    neighbors[..., :2] /= SCALE
+    return feat, fut, torch.tensor(data["type"]), lanes, torch.tensor(data["lane_mask"]), neighbors, torch.tensor(data["neighbor_mask"]), torch.tensor(data["neighbor_type"])
 
 
-def flow_loss(model, feat, fut, type_id, lanes, lane_mask, generator=None):
+def flow_loss(model, feat, fut, type_id, lanes, lane_mask, neighbors, neighbor_mask, neighbor_type, generator=None):
     x0 = torch.randn(fut.shape, generator=generator).to(fut.device)
     t = torch.rand(len(fut), generator=generator).to(fut.device)
     xt = (1 - t[:, None, None]) * x0 + t[:, None, None] * fut
-    return ((model(xt, t, feat, type_id, lanes, lane_mask) - fut) ** 2).mean()
+    return ((model(xt, t, feat, type_id, lanes, lane_mask, neighbors, neighbor_mask, neighbor_type) - fut) ** 2).mean()
 
 
 def val_loss(model, val):
